@@ -2,3 +2,5 @@
 
 # Local clones for testing purposes
 clones
+# Local config for testing purposes
+config.toml

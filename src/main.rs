@@ -1,28 +1,32 @@
 use std::{
+    collections::HashMap,
     fmt::Display,
     path::PathBuf,
-    process::{Child, Command, Output},
+    process::{Command, Output, Stdio},
 };
 
-#[derive(Debug, Default)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 enum GitService {
     #[default]
-    Github,
+    GitHub,
     GitLab,
 }
 
 impl GitService {
     pub fn ssh(&self) -> String {
         match self {
-            GitService::Github => "git@github.com".to_string(),
+            GitService::GitHub => "git@github.com".to_string(),
             GitService::GitLab => "git@gitlab.com".to_string(),
         }
     }
 }
 
-// A git repo contains an author, repository name and service.
+// A git repo contains an author, repository name, and service.
 //
 // For example 'github.com/jdockerty/synq'.
+#[derive(Debug, Serialize, Deserialize)]
 struct GitRepo<'a> {
     author: &'a str,
     repository: &'a str,
@@ -58,10 +62,15 @@ impl<'a> GitClone<'a> {
         Self { git_repo }
     }
 
-    pub fn execute(&self) -> Output {
+    pub fn execute(&self, working_directory: &str) -> Output {
         let handle = Command::new("git")
             .args(&["clone", "--depth=1"])
             .arg(self.git_repo.url())
+            .arg(format!(
+                "{}/{}",
+                working_directory, self.git_repo.repository
+            ))
+            .stdout(Stdio::piped())
             .spawn()
             .expect("can execute 'git' command");
         handle.wait_with_output().unwrap()
@@ -82,26 +91,34 @@ impl<'a> RepositoryWatcher<'a> {
     }
 
     fn repo_dir(&self) -> PathBuf {
-        std::fs::canonicalize(self.working_directory.join(self.git_repo.repository)).unwrap()
+        self.working_directory.join(self.git_repo.repository)
     }
 
     fn do_clone(&self) {
         let clone = GitClone::new(&self.git_repo);
-        clone.execute();
+        clone.execute(self.working_directory.to_str().unwrap());
     }
 
     /// Whether there is a detected diff between the local and remote repositories.
     pub fn diff(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let status = Command::new("git")
             .args(&["-C", &self.repo_dir().to_string_lossy(), "fetch"])
+            .stdout(Stdio::piped())
             .spawn()?
             .wait()?;
+
         if !status.success() {
             return Err(format!("unable to fetch {}", self.git_repo).into());
         }
 
         let local_output = Command::new("git")
-            .args(&["-C", &self.repo_dir().to_string_lossy(), "rev-parse HEAD"])
+            .args(&[
+                "-C",
+                &self.repo_dir().to_string_lossy(),
+                "rev-parse",
+                "HEAD",
+            ])
+            .stdout(Stdio::piped())
             .spawn()?
             .wait_with_output()?;
 
@@ -109,8 +126,10 @@ impl<'a> RepositoryWatcher<'a> {
             .args(&[
                 "-C",
                 &self.repo_dir().to_string_lossy(),
-                "rev-parse @{upstream}",
+                "rev-parse",
+                "@{upstream}",
             ])
+            .stdout(Stdio::piped())
             .spawn()?
             .wait_with_output()?;
 
@@ -127,26 +146,51 @@ impl<'a> RepositoryWatcher<'a> {
                 // TODO: none 'origin/main' remotes
                 "origin/main",
             ])
+            .stdout(Stdio::piped())
             .spawn()?
             .wait()?;
         Ok(())
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let watcher_1 = RepositoryWatcher::new(
-        GitRepo::new("jdockerty", "gruglb", GitService::Github),
-        "".into(),
-    );
+#[derive(Debug, Serialize, Deserialize)]
+struct Config<'a> {
+    #[serde(borrow)]
+    repo_details: HashMap<String, GitRepo<'a>>,
+    working_directory: PathBuf,
+}
 
-    if !PathBuf::from("clones").join(watcher_1.repo_dir()).exists() {
-        eprintln!("Initial clone");
-        println!("{:?}", watcher_1.repo_dir());
-        watcher_1.do_clone();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().collect::<Vec<_>>();
+
+    if args.len() != 2 {
+        return Err(format!("USAGE: {} <CONFIG_PATH>", args[0]).into());
     }
 
-    if watcher_1.diff()? {
-        watcher_1.update()?;
+    let config_path = args[1].clone();
+
+    let config_data = &std::fs::read(&config_path)?;
+    let config: Config<'_> = toml::from_slice(&config_data)?;
+
+    eprintln!("Reading config from {config_path}");
+
+    for (name, repo) in config.repo_details {
+        let watcher_1 = RepositoryWatcher::new(
+            GitRepo::new(repo.author, repo.repository, repo.service),
+            config.working_directory.clone(),
+        );
+
+        if !watcher_1.repo_dir().exists() {
+            watcher_1.do_clone();
+        }
+
+        if watcher_1.diff()? {
+            eprintln!(
+                "Diff detected for {name} ({}/{}), updating.",
+                repo.author, repo.repository
+            );
+            watcher_1.update()?;
+        }
     }
 
     Ok(())
