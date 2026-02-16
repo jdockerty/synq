@@ -25,7 +25,11 @@ impl GitService {
 
 // A git repo contains an author, repository name, and service.
 //
-// For example 'github.com/jdockerty/synq'.
+// For example 'github.com/jdockerty/synq', equates to:
+//
+// Author: 'jdockerty'
+// Repository: 'synq'
+// Service: 'GitHub'
 #[derive(Debug, Serialize, Deserialize)]
 struct GitRepo<'a> {
     author: &'a str,
