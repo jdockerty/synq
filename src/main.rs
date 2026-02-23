@@ -31,14 +31,14 @@ impl GitService {
 // Repository: 'synq'
 // Service: 'GitHub'
 #[derive(Debug, Serialize, Deserialize)]
-struct GitRepo<'a> {
-    author: &'a str,
-    repository: &'a str,
+struct GitRepo {
+    author: String,
+    repository: String,
     service: GitService,
 }
 
-impl<'a> GitRepo<'a> {
-    pub fn new(author: &'a str, repository: &'a str, service: GitService) -> Self {
+impl GitRepo {
+    pub fn new(author: String, repository: String, service: GitService) -> Self {
         Self {
             author,
             repository,
@@ -51,14 +51,14 @@ impl<'a> GitRepo<'a> {
     }
 }
 
-impl<'a> Display for GitRepo<'a> {
+impl Display for GitRepo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.url())
     }
 }
 
 struct GitClone<'a> {
-    git_repo: &'a GitRepo<'a>,
+    git_repo: &'a GitRepo,
 }
 
 fn git_cmd(args: &[&str]) -> Output {
@@ -73,7 +73,7 @@ fn git_cmd(args: &[&str]) -> Output {
 }
 
 impl<'a> GitClone<'a> {
-    pub fn new(git_repo: &'a GitRepo<'a>) -> Self {
+    pub fn new(git_repo: &'a GitRepo) -> Self {
         Self { git_repo }
     }
 
@@ -87,13 +87,13 @@ impl<'a> GitClone<'a> {
     }
 }
 
-struct RepositoryWatcher<'a> {
-    git_repo: GitRepo<'a>,
+struct RepositoryWatcher {
+    git_repo: GitRepo,
     working_directory: PathBuf,
 }
 
-impl<'a> RepositoryWatcher<'a> {
-    pub fn new(git_repo: GitRepo<'a>, working_directory: PathBuf) -> Self {
+impl RepositoryWatcher {
+    pub fn new(git_repo: GitRepo, working_directory: PathBuf) -> Self {
         Self {
             git_repo,
             working_directory,
@@ -101,7 +101,7 @@ impl<'a> RepositoryWatcher<'a> {
     }
 
     fn repo_dir(&self) -> PathBuf {
-        self.working_directory.join(self.git_repo.repository)
+        self.working_directory.join(&self.git_repo.repository)
     }
 
     fn do_clone(&self) {
@@ -139,9 +139,8 @@ impl<'a> RepositoryWatcher<'a> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Config<'a> {
-    #[serde(borrow)]
-    repo_details: HashMap<String, GitRepo<'a>>,
+struct Config {
+    repo_details: HashMap<String, GitRepo>,
     working_directory: PathBuf,
 }
 
@@ -155,13 +154,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = args[1].clone();
 
     let config_data = &std::fs::read(&config_path)?;
-    let config: Config<'_> = toml::from_slice(&config_data)?;
+    let config: Config = toml::from_slice(&config_data)?;
 
     eprintln!("Reading config from {config_path}");
 
     for (name, repo) in config.repo_details {
         let watcher_1 = RepositoryWatcher::new(
-            GitRepo::new(repo.author, repo.repository, repo.service),
+            GitRepo::new(repo.author.clone(), repo.repository.clone(), repo.service),
             config.working_directory.clone(),
         );
 
