@@ -8,6 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum GitService {
     #[default]
     GitHub,
@@ -29,7 +30,7 @@ impl GitService {
 //
 // Author: 'jdockerty'
 // Repository: 'synq'
-// Service: 'GitHub'
+// Service: 'github'
 #[derive(Debug, Serialize, Deserialize)]
 struct GitRepo {
     author: String,
