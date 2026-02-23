@@ -75,6 +75,7 @@ impl<'a> GitClone<'a> {
                 working_directory, self.git_repo.repository
             ))
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("can execute 'git' command");
         handle.wait_with_output().unwrap()
@@ -108,6 +109,7 @@ impl<'a> RepositoryWatcher<'a> {
         let status = Command::new("git")
             .args(&["-C", &self.repo_dir().to_string_lossy(), "fetch"])
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?
             .wait()?;
 
@@ -123,6 +125,7 @@ impl<'a> RepositoryWatcher<'a> {
                 "HEAD",
             ])
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?
             .wait_with_output()?;
 
@@ -134,6 +137,7 @@ impl<'a> RepositoryWatcher<'a> {
                 "@{upstream}",
             ])
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?
             .wait_with_output()?;
 
@@ -147,7 +151,7 @@ impl<'a> RepositoryWatcher<'a> {
                 &self.repo_dir().to_string_lossy(),
                 "reset",
                 "--hard",
-                // TODO: none 'origin/main' remotes
+                // TODO: non-'origin/main' remotes
                 "origin/main",
             ])
             .stdout(Stdio::piped())
