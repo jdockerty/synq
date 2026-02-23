@@ -190,6 +190,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if !watcher_1.repo_dir().exists() {
             watcher_1.do_clone();
+            // First clone will have the latest info, so we can
+            // skip some unnecessary work on checking diffs
+            continue;
         }
 
         if watcher_1.diff()? {
@@ -198,6 +201,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 repo.author, repo.repository
             );
             watcher_1.update()?;
+        } else {
+            eprintln!(
+                "No updates required for {}/{}",
+                repo.author, repo.repository
+            );
         }
     }
 
