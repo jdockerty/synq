@@ -61,24 +61,29 @@ struct GitClone<'a> {
     git_repo: &'a GitRepo<'a>,
 }
 
+fn git_cmd(args: &[&str]) -> Output {
+    Command::new("git")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("can execute 'git' command")
+        .wait_with_output()
+        .unwrap()
+}
+
 impl<'a> GitClone<'a> {
     pub fn new(git_repo: &'a GitRepo<'a>) -> Self {
         Self { git_repo }
     }
 
     pub fn execute(&self, working_directory: &str) -> Output {
-        let handle = Command::new("git")
-            .args(&["clone", "--depth=1"])
-            .arg(self.git_repo.url())
-            .arg(format!(
-                "{}/{}",
-                working_directory, self.git_repo.repository
-            ))
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("can execute 'git' command");
-        handle.wait_with_output().unwrap()
+        git_cmd(&[
+            "clone",
+            "--depth=1",
+            &self.git_repo.url(),
+            &format!("{}/{}", working_directory, self.git_repo.repository),
+        ])
     }
 }
 
@@ -106,58 +111,30 @@ impl<'a> RepositoryWatcher<'a> {
 
     /// Whether there is a detected diff between the local and remote repositories.
     pub fn diff(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        let status = Command::new("git")
-            .args(&["-C", &self.repo_dir().to_string_lossy(), "fetch"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?
-            .wait()?;
+        let repo_dir = self.repo_dir().to_string_lossy().to_string();
 
-        if !status.success() {
+        let fetch_output = git_cmd(&["-C", &repo_dir, "fetch"]);
+        if !fetch_output.status.success() {
             return Err(format!("unable to fetch {}", self.git_repo).into());
         }
 
-        let local_output = Command::new("git")
-            .args(&[
-                "-C",
-                &self.repo_dir().to_string_lossy(),
-                "rev-parse",
-                "HEAD",
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?
-            .wait_with_output()?;
-
-        let remote_output = Command::new("git")
-            .args(&[
-                "-C",
-                &self.repo_dir().to_string_lossy(),
-                "rev-parse",
-                "@{upstream}",
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?
-            .wait_with_output()?;
+        let local_output = git_cmd(&["-C", &repo_dir, "rev-parse", "HEAD"]);
+        let remote_output = git_cmd(&["-C", &repo_dir, "rev-parse", "@{upstream}"]);
 
         Ok(local_output.stdout != remote_output.stdout)
     }
 
-    pub fn update(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Command::new("git")
-            .args(&[
-                "-C",
-                &self.repo_dir().to_string_lossy(),
-                "reset",
-                "--hard",
-                // TODO: non-'origin/main' remotes
-                "origin/main",
-            ])
-            .stdout(Stdio::piped())
-            .spawn()?
-            .wait()?;
-        Ok(())
+    pub fn update(&self) {
+        let repo_dir = self.repo_dir().to_string_lossy().to_string();
+
+        git_cmd(&[
+            "-C",
+            &repo_dir,
+            "reset",
+            "--hard",
+            // TODO: non-'origin/main' remotes
+            "origin/main",
+        ]);
     }
 }
 
@@ -189,6 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         if !watcher_1.repo_dir().exists() {
+            eprintln!("Cloning {}/{}", repo.author, repo.repository);
             watcher_1.do_clone();
             // First clone will have the latest info, so we can
             // skip some unnecessary work on checking diffs
@@ -200,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Diff detected for {name} ({}/{}), updating.",
                 repo.author, repo.repository
             );
-            watcher_1.update()?;
+            watcher_1.update();
         } else {
             eprintln!(
                 "No updates required for {}/{}",
