@@ -19,6 +19,15 @@ working_directory = "/tmp/synq-dirs"
 
 [repo_details]
 gruglb = {
-  author = "jdockerty", repository = "gruglb", service = "github"
+  author = "jdockerty", repository = "gruglb", service = "github", post_sync = """
+    echo 'my scripted action'
+  """"
 }
 ```
+
+### Post sync actions
+
+Post sync actions can be supplied as a regular shell script to the `post_sync` option of a repository.
+
+This action assumes that `synq` is running in an environment with suitable permissions _or_ is only being supplied non-malicious actions.
+

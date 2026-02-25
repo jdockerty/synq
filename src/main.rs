@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{Result, ensure};
+use run_script::run_script;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -37,14 +38,21 @@ struct GitRepo {
     author: String,
     repository: String,
     service: GitService,
+    post_sync: Option<String>,
 }
 
 impl GitRepo {
-    pub fn new(author: String, repository: String, service: GitService) -> Self {
+    pub fn new(
+        author: String,
+        repository: String,
+        service: GitService,
+        post_sync: Option<String>,
+    ) -> Self {
         Self {
             author,
             repository,
             service,
+            post_sync,
         }
     }
 
@@ -100,6 +108,24 @@ impl RepositoryWatcher {
             git_repo,
             working_directory,
         }
+    }
+
+    /// Run a post sync action. If no action
+    /// is provided, then this is a no-op.
+    fn run_post_sync(&self) -> Result<()> {
+        if let Some(post_sync) = &self.git_repo.post_sync {
+            let (exit_code, output, error) = run_script!(post_sync)?;
+            ensure!(
+                exit_code == 0,
+                format!(
+                    "unable to run post sync script for {}/{}: {error}",
+                    self.git_repo.author, self.git_repo.repository
+                )
+            );
+            eprintln!("{output}");
+        }
+
+        Ok(())
     }
 
     fn repo_dir(&self) -> PathBuf {
@@ -161,7 +187,12 @@ fn main() -> Result<()> {
 
     for (name, repo) in config.repo_details {
         let watcher_1 = RepositoryWatcher::new(
-            GitRepo::new(repo.author.clone(), repo.repository.clone(), repo.service),
+            GitRepo::new(
+                repo.author.clone(),
+                repo.repository.clone(),
+                repo.service,
+                repo.post_sync,
+            ),
             config.working_directory.clone(),
         );
 
@@ -179,6 +210,7 @@ fn main() -> Result<()> {
                 repo.author, repo.repository
             );
             watcher_1.update();
+            watcher_1.run_post_sync()?;
         } else {
             eprintln!(
                 "No updates required for {}/{}",
