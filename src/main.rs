@@ -5,6 +5,7 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -111,13 +112,14 @@ impl RepositoryWatcher {
     }
 
     /// Whether there is a detected diff between the local and remote repositories.
-    pub fn diff(&self) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn diff(&self) -> Result<bool> {
         let repo_dir = self.repo_dir().to_string_lossy().to_string();
 
         let fetch_output = git_cmd(&["-C", &repo_dir, "fetch"]);
-        if !fetch_output.status.success() {
-            return Err(format!("unable to fetch {}", self.git_repo).into());
-        }
+        ensure!(
+            fetch_output.status.success(),
+            format!("unable to fetch {}", self.git_repo)
+        );
 
         let local_output = git_cmd(&["-C", &repo_dir, "rev-parse", "HEAD"]);
         let remote_output = git_cmd(&["-C", &repo_dir, "rev-parse", "@{upstream}"]);
@@ -145,12 +147,10 @@ struct Config {
     working_directory: PathBuf,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
 
-    if args.len() != 2 {
-        return Err(format!("USAGE: {} <CONFIG_PATH>", args[0]).into());
-    }
+    ensure!(args.len() == 2, format!("USAGE: {} <CONFIG_PATH>", args[0]));
 
     let config_path = args[1].clone();
 
