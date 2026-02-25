@@ -155,7 +155,7 @@ fn main() -> Result<()> {
     let config_path = args[1].clone();
 
     let config_data = &std::fs::read(&config_path)?;
-    let config: Config = toml::from_slice(&config_data)?;
+    let config: Config = toml::from_slice(config_data)?;
 
     eprintln!("Reading config from {config_path}");
 
