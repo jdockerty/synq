@@ -118,7 +118,7 @@ impl RepositoryWatcher {
             ensure!(
                 exit_code == 0,
                 format!(
-                    "unable to run post sync script for {}/{}: {error}",
+                    "unable to run post sync script for {}/{}, exited with {exit_code}: {error}",
                     self.git_repo.author, self.git_repo.repository
                 )
             );
