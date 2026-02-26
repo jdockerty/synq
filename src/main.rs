@@ -3,13 +3,14 @@ use std::{
     fmt::Display,
     path::PathBuf,
     process::{Command, Output, Stdio},
+    time::Duration,
 };
 
 use anyhow::{Result, ensure};
 use run_script::run_script;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum GitService {
     #[default]
@@ -33,7 +34,7 @@ impl GitService {
 // Author: 'jdockerty'
 // Repository: 'synq'
 // Service: 'github'
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GitRepo {
     author: String,
     repository: String,
@@ -185,41 +186,42 @@ fn main() -> Result<()> {
 
     eprintln!("Reading config from {config_path}");
 
-    for (name, repo) in config.repo_details {
-        let watcher_1 = RepositoryWatcher::new(
-            GitRepo::new(
-                repo.author.clone(),
-                repo.repository.clone(),
-                repo.service,
-                repo.post_sync,
-            ),
-            config.working_directory.clone(),
-        );
-
-        if !watcher_1.repo_dir().exists() {
-            eprintln!("Cloning {}/{}", repo.author, repo.repository);
-            watcher_1.do_clone();
-            // First clone will have the latest info, so we can
-            // skip some unnecessary work on checking diffs
-            continue;
-        }
-
-        if watcher_1.diff()? {
-            eprintln!(
-                "Diff detected for {name} ({}/{}), updating.",
-                repo.author, repo.repository
+    loop {
+        for (name, repo) in &config.repo_details {
+            let watcher = RepositoryWatcher::new(
+                GitRepo::new(
+                    repo.author.clone(),
+                    repo.repository.clone(),
+                    repo.service.clone(),
+                    repo.post_sync.clone(),
+                ),
+                config.working_directory.clone(),
             );
-            watcher_1.update();
-            watcher_1.run_post_sync()?;
-        } else {
-            eprintln!(
-                "No updates required for {}/{}",
-                repo.author, repo.repository
-            );
+
+            if !watcher.repo_dir().exists() {
+                eprintln!("Cloning {}/{}", repo.author, repo.repository);
+                watcher.do_clone();
+                // First clone will have the latest info, so we can
+                // skip some unnecessary work on checking diffs
+                continue;
+            }
+
+            if watcher.diff()? {
+                eprintln!(
+                    "Diff detected for {name} ({}/{}), updating.",
+                    repo.author, repo.repository
+                );
+                watcher.update();
+                watcher.run_post_sync()?;
+            } else {
+                eprintln!(
+                    "No updates required for {}/{}",
+                    repo.author, repo.repository
+                );
+            }
         }
+        std::thread::sleep(Duration::from_secs(30));
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
